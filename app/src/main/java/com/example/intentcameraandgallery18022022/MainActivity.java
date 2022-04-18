@@ -2,10 +2,14 @@ package com.example.intentcameraandgallery18022022;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
@@ -23,6 +27,10 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.example.intentcameraandgallery18022022.databinding.ActivityMainBinding;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -83,9 +91,67 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onActivityResult(ActivityResult result) {
                     if (result.getResultCode() == Activity.RESULT_OK) {
-                        Bitmap bitmap = (Bitmap) result.getData().getExtras().get("data");
-                        mBinding.imageView.setImageBitmap(bitmap);
+                        Bitmap photo = (Bitmap) result.getData().getExtras().get("data");
+                        Uri tempUri = getImageUri(getApplicationContext(), photo);
+                        File finalFile = new File(getRealPathFromURI(tempUri));
+                        ExifInterface ei;
+                        try {
+                            ei = new ExifInterface(finalFile.getPath());
+                            int orientation = ei.getAttributeInt(ExifInterface.TAG_ORIENTATION,
+                                    ExifInterface.ORIENTATION_UNDEFINED);
+
+                            Bitmap rotatedBitmap;
+                            switch (orientation) {
+                                case ExifInterface.ORIENTATION_ROTATE_90:
+                                    rotatedBitmap = rotateImage(photo, 90);
+                                    break;
+
+                                case ExifInterface.ORIENTATION_ROTATE_180:
+                                    rotatedBitmap = rotateImage(photo, 180);
+                                    break;
+
+                                case ExifInterface.ORIENTATION_ROTATE_270:
+                                    rotatedBitmap = rotateImage(photo, 270);
+                                    break;
+
+                                case ExifInterface.ORIENTATION_NORMAL:
+                                default:
+                                    rotatedBitmap = photo;
+                            }
+                            mBinding.imageView.setImageBitmap(rotatedBitmap);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
                     }
                 }
             });
+
+    private static Bitmap rotateImage(Bitmap source, float angle) {
+        Matrix matrix = new Matrix();
+        matrix.postRotate(angle);
+        return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(),
+                matrix, true);
+    }
+
+    public Uri getImageUri(Context inContext, Bitmap inImage) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        inImage.compress(Bitmap.CompressFormat.JPEG, 100, bytes);
+        String path = MediaStore.Images.Media.insertImage(inContext.getContentResolver(), inImage, "Title", null);
+        return Uri.parse(path);
+    }
+
+    public String getRealPathFromURI(Uri uri) {
+        String path = "";
+        if (getContentResolver() != null) {
+            Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+            if (cursor != null) {
+                cursor.moveToFirst();
+                int idx = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
+                path = cursor.getString(idx);
+                cursor.close();
+            }
+        }
+        return path;
+    }
 }
